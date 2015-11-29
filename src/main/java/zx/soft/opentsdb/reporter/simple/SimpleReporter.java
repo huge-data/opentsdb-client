@@ -1,4 +1,4 @@
-package zx.soft.opentsdb.client.core;
+package zx.soft.opentsdb.reporter.simple;
 
 import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
@@ -13,7 +13,7 @@ import java.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import zx.soft.opentsdb.metrics.core.OpenTsdbMetric;
+import zx.soft.opentsdb.metric.OpenTsdbMetric;
 import zx.soft.utils.log.LogbackUtil;
 
 /**
@@ -22,9 +22,9 @@ import zx.soft.utils.log.LogbackUtil;
  * @author wanggang
  *
  */
-public class TsdbReporter {
+public class SimpleReporter {
 
-	private static final Logger logger = LoggerFactory.getLogger(TsdbReporter.class);
+	private static final Logger logger = LoggerFactory.getLogger(SimpleReporter.class);
 
 	private final List<Reportable> reportables = new ArrayList<Reportable>();
 
@@ -32,7 +32,7 @@ public class TsdbReporter {
 
 	private final int port;
 
-	public TsdbReporter(String tsdbHost, int tsdbPort) {
+	public SimpleReporter(String tsdbHost, int tsdbPort) {
 		logger.info("TSDB host={}, port={}", tsdbHost, tsdbPort);
 		this.host = tsdbHost;
 		this.port = tsdbPort;

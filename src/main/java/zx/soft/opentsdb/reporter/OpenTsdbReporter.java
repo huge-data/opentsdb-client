@@ -1,4 +1,4 @@
-package zx.soft.opentsdb.metrics;
+package zx.soft.opentsdb.reporter;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -7,8 +7,8 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
 
-import zx.soft.opentsdb.metrics.core.OpenTsdb;
-import zx.soft.opentsdb.metrics.core.OpenTsdbMetric;
+import zx.soft.opentsdb.client.OpenTsdbClient;
+import zx.soft.opentsdb.metric.OpenTsdbMetric;
 
 import com.codahale.metrics.Clock;
 import com.codahale.metrics.Counter;
@@ -22,41 +22,64 @@ import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 
 /**
- * A reporter which publishes metric values to a OpenTSDB server
+ * Reporter实现类，将Metric数据发送到OpenTSDB服务器上
  *
  * @author wanggang
  *
  */
 public class OpenTsdbReporter extends ScheduledReporter {
 
-	private final OpenTsdb opentsdb;
+	// OpenTSDB客户端
+	private final OpenTsdbClient opentsdb;
+	// 时钟对象
 	private final Clock clock;
+	// 所有的Metrix前缀名
 	private final String prefix;
+	// Tags列表
 	private final Map<String, String> tags;
 
 	/**
-	 * Returns a new {@link Builder} for {@link OpenTsdbReporter}.
+	 * 返回{@link OpenTsdbReporter}的{@link Builder}实例
 	 *
-	 * @param registry the registry to report
-	 * @return a {@link Builder} instance for a {@link OpenTsdbReporter}
+	 * @param registry report注册类
+	 * @return {@link OpenTsdbReporter}的{@link Builder}实例
 	 */
 	public static Builder forRegistry(MetricRegistry registry) {
 		return new Builder(registry);
 	}
 
+	private OpenTsdbReporter(MetricRegistry registry, OpenTsdbClient opentsdb, Clock clock, String prefix,
+			TimeUnit rateUnit, TimeUnit durationUnit, MetricFilter filter, Map<String, String> tags) {
+		super(registry, "opentsdb-reporter", filter, rateUnit, durationUnit);
+		this.opentsdb = opentsdb;
+		this.clock = clock;
+		this.prefix = prefix;
+		this.tags = tags;
+	}
+
 	/**
-	 * A builder for {@link OpenTsdbReporter} instances. Defaults to not using a prefix, using the
-	 * default clock, converting rates to events/second, converting durations to milliseconds, and
-	 * not filtering metrics.
+	 * {@link OpenTsdbReporter}实例化的Builder类
+	 *
+	 * 默认不使用前缀名，而是使用clock时钟将比率转换成events/second，
+	 * 将时间长度转换成毫秒，并且不过率metric。
 	 */
 	public static class Builder {
+
+		// Metric注册类
 		private final MetricRegistry registry;
+		// 时钟
 		private Clock clock;
+		// 前缀名
 		private String prefix;
+		// 比率单位
 		private TimeUnit rateUnit;
+		// 时长单位
 		private TimeUnit durationUnit;
+		// Metric过滤器
 		private MetricFilter filter;
+		// Tags列表
 		private Map<String, String> tags;
+		// 批量大小
 		private int batchSize;
 
 		private Builder(MetricRegistry registry) {
@@ -66,25 +89,16 @@ public class OpenTsdbReporter extends ScheduledReporter {
 			this.rateUnit = TimeUnit.SECONDS;
 			this.durationUnit = TimeUnit.MILLISECONDS;
 			this.filter = MetricFilter.ALL;
-			this.batchSize = OpenTsdb.DEFAULT_BATCH_SIZE_LIMIT;
+			this.batchSize = OpenTsdbClient.DEFAULT_BATCH_SIZE_LIMIT;
 		}
 
-		/**
-		 * Use the given {@link Clock} instance for the time.
-		 *
-		 * @param clock a {@link Clock} instance
-		 * @return {@code this}
-		 */
 		public Builder withClock(Clock clock) {
 			this.clock = clock;
 			return this;
 		}
 
 		/**
-		 * Prefix all metric names with the given string.
-		 *
-		 * @param prefix the prefix for all metric names
-		 * @return {@code this}
+		 * 根据给定的前缀名给所有的Metric名字加上前缀
 		 */
 		public Builder prefixedWith(String prefix) {
 			this.prefix = prefix;
@@ -92,10 +106,7 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * Convert rates to the given time unit.
-		 *
-		 * @param rateUnit a unit of time
-		 * @return {@code this}
+		 * 将比例转换成给定的时间单位
 		 */
 		public Builder convertRatesTo(TimeUnit rateUnit) {
 			this.rateUnit = rateUnit;
@@ -103,10 +114,7 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * Convert durations to the given time unit.
-		 *
-		 * @param durationUnit a unit of time
-		 * @return {@code this}
+		 * 将时间长度转换成给定的时间单位
 		 */
 		public Builder convertDurationsTo(TimeUnit durationUnit) {
 			this.durationUnit = durationUnit;
@@ -114,10 +122,7 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * Only report metrics which match the given filter.
-		 *
-		 * @param filter a {@link MetricFilter}
-		 * @return {@code this}
+		 * 对符合过滤调剂的Metric进行Report
 		 */
 		public Builder filter(MetricFilter filter) {
 			this.filter = filter;
@@ -125,10 +130,7 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * Append tags to all reported metrics
-		 *
-		 * @param tags
-		 * @return
+		 * 将Tags加到所有需要Report的Metric中
 		 */
 		public Builder withTags(Map<String, String> tags) {
 			this.tags = tags;
@@ -136,34 +138,33 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		}
 
 		/**
-		 * specify number of metrics send in each request
-		 *
-		 * @param batchSize
-		 * @return
+		 * 制定批量发送的Metric数量
 		 */
 		public Builder withBatchSize(int batchSize) {
 			this.batchSize = batchSize;
 			return this;
 		}
 
-		/**
-		 * Builds a {@link OpenTsdbReporter} with the given properties, sending metrics using the
-		 * given {@link zx.soft.opentsdb.metrics.core.OpenTsdb} client.
-		 *
-		 * @param opentsdb a {@link OpenTsdb} client
-		 * @return a {@link OpenTsdbReporter}
-		 */
-		public OpenTsdbReporter build(OpenTsdb opentsdb) {
+		public OpenTsdbReporter build(OpenTsdbClient opentsdb) {
 			opentsdb.setBatchSizeLimit(batchSize);
 			return new OpenTsdbReporter(registry, opentsdb, clock, prefix, rateUnit, durationUnit, filter, tags);
 		}
+
 	}
 
+	/**
+	 * Metric集合
+	 */
 	private static class MetricsCollector {
+
+		// 前缀名
 		private final String prefix;
+		// Tags列表
 		private final Map<String, String> tags;
+		// 时间戳
 		private final long timestamp;
-		private final Set<OpenTsdbMetric> metrics = new HashSet<OpenTsdbMetric>();
+		// Metric集合
+		private final Set<OpenTsdbMetric> metrics = new HashSet<>();
 
 		private MetricsCollector(String prefix, Map<String, String> tags, long timestamp) {
 			this.prefix = prefix;
@@ -184,24 +185,20 @@ public class OpenTsdbReporter extends ScheduledReporter {
 		public Set<OpenTsdbMetric> build() {
 			return metrics;
 		}
+
 	}
 
-	private OpenTsdbReporter(MetricRegistry registry, OpenTsdb opentsdb, Clock clock, String prefix, TimeUnit rateUnit,
-			TimeUnit durationUnit, MetricFilter filter, Map<String, String> tags) {
-		super(registry, "opentsdb-reporter", filter, rateUnit, durationUnit);
-		this.opentsdb = opentsdb;
-		this.clock = clock;
-		this.prefix = prefix;
-		this.tags = tags;
-	}
-
+	/**
+	 * Report操作
+	 */
+	@SuppressWarnings("rawtypes")
 	@Override
 	public void report(SortedMap<String, Gauge> gauges, SortedMap<String, Counter> counters,
 			SortedMap<String, Histogram> histograms, SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
 
 		final long timestamp = clock.getTime() / 1000;
 
-		final Set<OpenTsdbMetric> metrics = new HashSet<OpenTsdbMetric>();
+		final Set<OpenTsdbMetric> metrics = new HashSet<>();
 
 		for (Map.Entry<String, Gauge> g : gauges.entrySet()) {
 			if (g.getValue().getValue() instanceof Collection && ((Collection) g.getValue().getValue()).isEmpty()) {
@@ -230,17 +227,18 @@ public class OpenTsdbReporter extends ScheduledReporter {
 	}
 
 	private Set<OpenTsdbMetric> buildTimers(String name, Timer timer, long timestamp) {
+
 		final MetricsCollector collector = MetricsCollector.createNew(prefix(name), tags, timestamp);
 		final Snapshot snapshot = timer.getSnapshot();
 
 		return collector
 				.addMetric("count", timer.getCount())
-				//convert rate
+				// 转换比率
 				.addMetric("m15", convertRate(timer.getFifteenMinuteRate()))
 				.addMetric("m5", convertRate(timer.getFiveMinuteRate()))
 				.addMetric("m1", convertRate(timer.getOneMinuteRate()))
 				.addMetric("mean_rate", convertRate(timer.getMeanRate()))
-				// convert duration
+				// 转换时间长度
 				.addMetric("max", convertDuration(snapshot.getMax()))
 				.addMetric("min", convertDuration(snapshot.getMin()))
 				.addMetric("mean", convertDuration(snapshot.getMean()))
@@ -284,6 +282,7 @@ public class OpenTsdbReporter extends ScheduledReporter {
 				.withTags(tags).build();
 	}
 
+	@SuppressWarnings("rawtypes")
 	private OpenTsdbMetric buildGauge(String name, Gauge gauge, long timestamp) {
 		return OpenTsdbMetric.named(prefix(name, "value")).withValue(gauge.getValue()).withTimestamp(timestamp)
 				.withTags(tags).build();

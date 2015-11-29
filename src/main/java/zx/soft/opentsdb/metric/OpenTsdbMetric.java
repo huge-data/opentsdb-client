@@ -1,4 +1,4 @@
-package zx.soft.opentsdb.metrics.core;
+package zx.soft.opentsdb.metric;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -84,7 +84,7 @@ public class OpenTsdbMetric {
 
 		public Builder(String metric) {
 			this.openTsdbMetric = new OpenTsdbMetric();
-			openTsdbMetric.metric = metric;
+			this.openTsdbMetric.metric = metric;
 		}
 
 		public OpenTsdbMetric build() {

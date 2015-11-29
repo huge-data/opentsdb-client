@@ -1,11 +1,11 @@
-package zx.soft.opentsdb.client.core;
+package zx.soft.opentsdb.reporter.simple;
 
 import java.util.List;
 
-import zx.soft.opentsdb.metrics.core.OpenTsdbMetric;
+import zx.soft.opentsdb.metric.OpenTsdbMetric;
 
 /**
- * 报表接口
+ * Report接口
  *
  * @author wanggang
  *
